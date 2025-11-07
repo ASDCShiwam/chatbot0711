@@ -1,0 +1,439 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF Chatbot</title>
+  <link rel="stylesheet" href="{% static 'css/all.min.css' %}" />
+  <script src="{% static 'js/tailwind.js' %}"></script>
+  <style>
+    .chatModal {
+      transition: all 0.3s ease-in-out;
+      margin-top:372px;
+    }
+    .link-container a {
+      color: #1E40AF; /* blue color */
+      text-decoration: none; /* Removes underline */
+    }
+    .link-container a:hover {
+      text-decoration: underline; /* Adds underline on hover */
+    }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen p-4 relative">
+
+  <!-- Toggle Button Container -->
+  <div onclick="toggleModal();" id="chatToggleButton" class="fixed bottom-6 right-6 z-50 cursor-pointer bg-white rounded-full shadow-lg p-3">
+    <img id="chatToggleImg" src="{% static 'images/download.png' %}" alt="Chat" class="w-10 h-10">
+  </div>
+
+  <!-- Chatbot Modal -->
+  <div id="modal" class="chatModal fixed top-10 right-[-40vw] w-[400px] max-w-full h-[50vh] bg-white shadow-2xl rounded-lg opacity-0 z-50 flex flex-col overflow-hidden">
+    <!-- Title -->
+    <div class="bg-blue-600 text-white text-center py-3 text-xl font-semibold">
+      📘 DGIS Assistant
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading" class="absolute top-5 right-5 bg-white px-3 py-1 rounded shadow text-blue-600 font-semibold hidden">
+      ⏳ Generating response...
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chatbox" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"></div>
+
+    <!-- Input -->
+    <div class="flex items-center border-t px-4 py-3 gap-2">
+      <input id="query" type="text" placeholder="Type your question..."
+             class="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+             onkeydown="if(event.key === 'Enter') sendQuery()">
+      <button onclick="sendQuery()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById("modal");
+    let isModalOpen = false;
+    let isSending = false;
+    let hasWelcomeMessageShown = false; 
+     let lastUserQuery = "";
+    function toggleModal() {
+      const button = document.getElementById("chatToggleButton");
+
+      if (isModalOpen) {
+        modal.style.right = "-40vw";
+        modal.style.opacity = "0";
+        button.innerHTML = `<img id="chatToggleImg" src="{% static 'images/download.png' %}" alt="Chat" class="w-10 h-10">`;
+      } else {
+        modal.style.right = "72px";
+        modal.style.opacity = "1";
+        button.innerHTML = `<i class="fas fa-times text-blue-600 text-2xl"></i>`;
+      }
+if (!hasWelcomeMessageShown) {
+    showWelcomeMessage();
+    hasWelcomeMessageShown = true; // Set flag to true to avoid showing the message again
+  }
+      sendQuery("hi", true);     // Silent repeat call
+
+setInterval(() => {
+    console.log("⏰ Sending heartbeat 'hi' to API...");
+    sendQuery("hi", true);     // Silent repeat call
+  }, 240000); 
+      isModalOpen = !isModalOpen;
+    }
+        function showWelcomeMessage() {
+      const chatbox = document.getElementById("chatbox");
+      const wrapper = document.createElement("div");
+      wrapper.className = "flex justify-start items-start gap-2";
+
+      const icon = document.createElement("div");
+      icon.innerHTML = '<i class="fas fa-robot text-green-600 text-lg"></i>';
+
+      const msg = document.createElement("div");
+      msg.className = "p-3 max-w-xs rounded-lg text-sm shadow bg-green-100 text-left";
+
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "flex flex-col gap-1 items-start";
+
+      const textDiv = document.createElement("div");
+      textDiv.className = "message-text";
+
+      // Set the welcome message
+      textDiv.innerHTML = "👋 Welcome! How can I assist you today?";
+      contentWrapper.appendChild(textDiv);
+
+      msg.appendChild(contentWrapper);
+
+      wrapper.appendChild(icon);
+      wrapper.appendChild(msg);
+
+      // Append the message to the chatbox
+      chatbox.appendChild(wrapper);
+      chatbox.scrollTop = chatbox.scrollHeight; // Scroll to the bottom
+
+    }
+
+    function streamText(container, text, speed = 25, callback) {
+      let index = 0;
+      container.innerHTML = "";
+      function addLetter() {
+        if (index < text.length) {
+          const char = text[index] === "\n" ? "<br>" : text[index];
+          container.innerHTML += char;
+          index++;
+          setTimeout(addLetter, speed);
+        } else if (callback) callback();
+      }
+      addLetter();
+    }
+
+    function addMessage(role, text, stream = false, link = "", meta = {},callback=null) {
+      const chatbox = document.getElementById("chatbox");
+      const wrapper = document.createElement("div");
+      wrapper.className = role === "user" ? "flex justify-end items-start gap-2" : "flex justify-start items-start gap-2";
+
+      const icon = document.createElement("div");
+      icon.innerHTML = role === "user"
+        ? '<i class="fas fa-user text-blue-600 text-lg"></i>'
+        : '<i class="fas fa-robot text-green-600 text-lg"></i>';
+
+      const msg = document.createElement("div");
+      msg.className = "p-3 max-w-xs rounded-lg text-sm shadow " +
+        (role === "user" ? "bg-blue-100 text-left" : "bg-green-100 text-left");
+
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "flex flex-col gap-1 items-start";
+
+      const textDiv = document.createElement("div");
+      textDiv.className = "message-text";
+
+      // Render the message text
+      textDiv.innerHTML = text;
+      contentWrapper.appendChild(textDiv);
+
+      // If a link is provided, render it as a clickable link
+      if (link) {
+        const linkDiv = document.createElement("div");
+        linkDiv.className = "link-container";
+
+        const message = document.createElement("span");
+        message.innerText = "Visit the official site for more info: ";
+        linkDiv.appendChild(message);
+        linkDiv.innerHTML += link; // This will render the link correctly as an anchor tag
+
+        contentWrapper.appendChild(linkDiv);
+      }
+
+      // Append metadata (duration and scores)
+      if (meta?.duration || meta?.scores) {
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "text-xs text-gray-600 italic mt-1";
+
+        let metaText = "";
+
+        if (meta.duration) {
+          metaText += `⏱️ Response time: ${meta.duration.toFixed(2)}s<br>`;
+        }
+
+        if (meta.scores) {
+          if (typeof meta.scores === 'object') {
+            const scoreVals = Object.values(meta.scores)
+              .map(val => parseFloat(val).toFixed(2));
+            metaText += `🔍 Similarity scores: ${scoreVals.join(", ")}`;
+          } else {
+            metaText += `🔍 Similarity scores: ${parseFloat(meta.scores).toFixed(2)}`;
+          }
+        }
+
+        metaDiv.innerHTML = metaText;
+        contentWrapper.appendChild(metaDiv);
+      }
+
+      const controls = document.createElement("div");
+      controls.className = "flex gap-3 items-center text-gray-500 mt-1";
+
+      const copyBtn = document.createElement("span");
+      copyBtn.className = "cursor-pointer text-sm hover:text-blue-600";
+      copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+      copyBtn.title = "Copy";
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(text);
+        copyBtn.innerHTML = '<i class="fas fa-check text-green-600"></i>';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="fas fa-copy"></i>';
+        }, 1500);
+      };
+      controls.appendChild(copyBtn);
+
+      // Add query time and similarity scores if provided
+      if (role === "user") {
+        const editBtn = document.createElement("span");
+        editBtn.className = "cursor-pointer text-sm hover:text-blue-600";
+        editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+        editBtn.title = "Edit";
+        editBtn.onclick = () => makeEditable(textDiv, wrapper, text);
+        controls.appendChild(editBtn);
+      }
+
+      contentWrapper.appendChild(controls);
+      msg.appendChild(contentWrapper);
+
+      // Append to chatbox after content is updated
+      chatbox.appendChild(wrapper);
+      chatbox.scrollTop = chatbox.scrollHeight;
+
+      // Stream the text if required
+    if (role === "bot" && stream) {
+    streamText(textDiv, text, 25, () => {
+      appendRatingIcons(msg);
+      controls.style.display = "flex";
+
+      if (link) {
+                  // if (callback) callback(); // ✅ Trigger after link streamed
+
+        const linkDiv = document.createElement("div");
+        linkDiv.className = "link-container";
+        // const message = document.createElement("span");
+        // message.innerText = "Visit the official site for more info: ";
+        // linkDiv.appendChild(message);
+        // linkDiv.innerHTML += link;
+        // contentWrapper.appendChild(linkDiv);
+
+        streamText(linkDiv, link, 25, () => {
+          if (callback) callback(); // ✅ Trigger after link streamed
+        });
+      } else {
+        if (callback) callback(); // ✅ Trigger after answer streamed
+      }
+    });
+  } else {
+    if (role === "bot") appendRatingIcons(msg);
+    if (callback) callback(); // ✅ Trigger callback immediately if no streaming
+  }
+
+  // Append final layout
+  if (role === "user") {
+    wrapper.appendChild(msg);
+    wrapper.appendChild(icon);
+  } else {
+    wrapper.appendChild(icon);
+    wrapper.appendChild(msg);
+  }
+
+  chatbox.appendChild(wrapper);
+  chatbox.scrollTop = chatbox.scrollHeight;
+
+    }
+function sendQuery(optionalQuery = null, silent = false) {
+  if (isSending) {
+    console.log("Query already being processed. Please wait...");
+    return;
+  }
+
+  const userQueryTime = new Date(); // ✅ Time when query is sent
+  isSending = true;
+
+  const input = document.getElementById("query");
+  const sendButton = document.querySelector("button[onclick='sendQuery()']");
+  const query = optionalQuery || input.value.trim();
+  if (!query) {
+    isSending = false;
+    return;
+  }
+
+  lastUserQuery = query;
+
+  if (!silent) {
+    input.disabled = true;
+    sendButton.disabled = true;
+    sendButton.classList.add("opacity-50", "cursor-not-allowed");
+    if (!optionalQuery) input.value = "";
+    addMessage("user", query);
+    document.getElementById("loading").classList.remove("hidden");
+  }
+
+  fetch("http://127.0.0.1:8000/chatbot/asdcask/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: query,
+      collection_name: "chatbot_asdc"
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const botResponseTime = new Date();
+    const roundTripTime = (botResponseTime - userQueryTime) / 1000;
+    console.log(`⏱️ Query sent at: ${userQueryTime.toISOString()}`);
+    console.log(`✅ Response received at: ${botResponseTime.toISOString()}`);
+    console.log(`⏳ Total round-trip time: ${roundTripTime.toFixed(2)} seconds`);
+
+    if (!silent) {
+      document.getElementById("loading").classList.add("hidden");
+      addMessage("bot", data.answer || "Please ask a question related to the website.", true, data.link, {
+        duration: data.duration,
+        scores: data.scores
+      }, () => {
+        isSending = false;
+        input.disabled = false;
+        sendButton.disabled = false;
+        sendButton.classList.remove("opacity-50", "cursor-not-allowed");
+        input.focus();
+      });
+    } else {
+      isSending = false;
+    }
+  })
+  .catch(() => {
+    if (!silent) {
+      document.getElementById("loading").classList.add("hidden");
+      addMessage("bot", "❌ Error processing your request.");
+      input.disabled = false;
+      sendButton.disabled = false;
+      sendButton.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+    isSending = false;
+  });
+}
+
+    function makeEditable(textDiv, wrapper, originalText) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = originalText;
+      input.className = "flex-1 px-3 py-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+      const buttonContainer = document.createElement("div");
+      buttonContainer.className = "flex gap-2 mt-2";
+
+      const cancelButton = document.createElement("button");
+      cancelButton.textContent = "Cancel";
+      cancelButton.className = "px-3 py-1 bg-gray-200 rounded hover:bg-gray-300";
+      cancelButton.onclick = () => {
+        textDiv.innerHTML = originalText;
+        textDiv.contentEditable = false;
+        buttonContainer.remove();
+      };
+
+      const sendButton = document.createElement("button");
+      sendButton.textContent = "Send";
+      sendButton.className = "px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700";
+      sendButton.onclick = () => {
+        const newQuery = input.value.trim();
+        if (newQuery) {
+          textDiv.innerHTML = newQuery;
+          textDiv.contentEditable = false;
+          buttonContainer.remove();
+          sendQuery(newQuery); // Re-send edited query
+        }
+      };
+
+      buttonContainer.appendChild(cancelButton);
+      buttonContainer.appendChild(sendButton);
+
+      // Clear the old text and insert input + buttons
+      textDiv.innerHTML = '';
+      textDiv.appendChild(input);
+      textDiv.appendChild(buttonContainer);
+    }
+
+    // Event delegation for like/dislike to handle clicks correctly
+    function appendRatingIcons(container) {
+      const feedbackDiv = document.createElement("div");
+      feedbackDiv.className = "flex justify-end gap-3 text-gray-500 text-sm mt-1";
+
+      const likeIcon = document.createElement("span");
+      likeIcon.innerHTML = '👍';
+      likeIcon.className = "cursor-pointer text-lg hover:text-green-500";
+      likeIcon.title = "Like";
+
+      const dislikeIcon = document.createElement("span");
+      dislikeIcon.innerHTML = '👎';
+      dislikeIcon.className = "cursor-pointer text-lg hover:text-red-500";
+      dislikeIcon.title = "Dislike";
+
+      feedbackDiv.appendChild(likeIcon);
+      feedbackDiv.appendChild(dislikeIcon);
+      container.appendChild(feedbackDiv);
+
+      // Add event listeners for like/dislike to the parent container (chatbox)
+      feedbackDiv.addEventListener("click", function(event) {
+        // Check if the clicked element is one of the icons
+        if (event.target === likeIcon) {
+          console.log("Like button clicked");
+          rateResponse('like');
+        } else if (event.target === dislikeIcon) {
+          console.log("Dislike button clicked");
+          rateResponse('dislike');
+        }
+      });
+    }
+
+    function rateResponse(type) {
+      console.log(`Rate response: ${type} clicked`);
+
+      // Append the feedback message to the chat UI
+      const chatbox = document.getElementById("chatbox");
+      const feedbackMessage = document.createElement("div");
+      feedbackMessage.className = "p-3 max-w-xs rounded-lg text-sm bg-gray-200 text-left";
+      feedbackMessage.textContent = type === 'like'
+        ? "👍 Thanks for liking the response!"
+        : "👎 Thanks for your feedback!";
+      
+      chatbox.appendChild(feedbackMessage);
+      chatbox.scrollTop = chatbox.scrollHeight;
+
+      // Send feedback to the backend (this should also work now)
+      // const lastQuestion = input; // You can pass the actual question from the user if needed
+      fetch("chatbot/asdcfeedback/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: type, query: lastUserQuery  })
+      }).then(res => res.json()).then(data => {
+        console.log("Feedback stored:", data);
+      }).catch(err => {
+        console.warn("Failed to send feedback", err);
+      });
+    }
+  </script>
+</body>
+</html>

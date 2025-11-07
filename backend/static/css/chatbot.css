@@ -1,0 +1,609 @@
+/* =========================
+   ASDC Chatbot – Responsive CSS
+   ========================= */
+
+/* ---- Design tokens ---- */
+:root{
+  --asdc-bg:#f5f7fb;
+  --asdc-card:#ffffff;
+  --asdc-text:#0f172a;
+  --asdc-subtext:#475569;
+  --asdc-border:#e5e7eb;
+  --asdc-primary:#2563eb;
+  --asdc-primary-contrast:#ffffff;
+  --asdc-note:#eef2ff;
+  --asdc-me:#e0f2fe;
+  --asdc-bot:#d5f9dd;
+  --asdc-shadow:0 12px 30px rgba(0,0,0,.12);
+  --asdc-radius:16px;
+  --asdc-radius-sm:10px;
+
+  /* dynamic viewport height from JS: --asdc-vh */
+  --asdc-vh: 100vh;
+
+  /* spacing scale */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+
+  /* sizes */
+  --chat-w: 380px;
+  --chat-h: min(70vh, calc(var(--asdc-vh) - 120px));
+  --chat-bottom: max(16px, env(safe-area-inset-bottom));
+  --chat-right: max(16px, env(safe-area-inset-right));
+  --chat-left: max(16px, env(safe-area-inset-left));
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark){
+  :root{
+    --asdc-bg:#0b1220;
+    --asdc-card:#0f1629;
+    --asdc-text:#e6edf6;
+    --asdc-subtext:#a1acc7;
+    --asdc-border:#1e293b;
+    --asdc-primary:#3b82f6;
+    --asdc-note:#0e1a42;
+    --asdc-me:#032a3a;
+    --asdc-bot:#0e2b14;
+    --asdc-shadow:0 12px 30px rgba(0,0,0,.45);
+  }
+}
+
+/* Global resets for the chat area only */
+.asdc-body{
+  /* font-size: 8px; */
+  background: var(--asdc-bg);
+  color: white;
+    /* font-weight: bold;   ✅ use this instead of font-family */
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide elements with [hidden] consistently */
+[hidden] { display:none !important; }
+
+/* -----------------------
+   Floating Toggle Button
+   ----------------------- */
+.asdc-chat-toggle{
+  position: fixed;
+  right: var(--chat-right);
+  bottom: var(--chat-bottom);
+  width: 103px; height: 103px;
+  border-radius: 50%;
+  border: none;
+  background: red;
+  color: var(--asdc-primary-contrast);
+  display: grid; place-items: center;
+  box-shadow: var(--asdc-shadow);
+  cursor: pointer;
+  z-index: 1000;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+    animation: bubble-pulse 2.2s infinite;
+
+}
+.asdc-chat-toggle:focus-visible{
+  outline: 3px solid color-mix(in oklab, var(--asdc-primary) 30%, white);
+  outline-offset: 3px;
+}
+.asdc-chat-toggle:hover{ transform: translateY(-2px);  animation: bubble-pop 0.4s ease;
+ }
+.asdc-chat-toggle:active{ transform: translateY(0); box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+
+/* -----------
+   Chat modal
+   ----------- */
+.asdc-chat{
+  position: fixed;
+  right: calc(var(--chat-right) + 56px + 12px);
+  bottom: calc(var(--chat-bottom) + 4px);
+  width: var(--chat-w);
+  height: var(--chat-h);
+  max-height: calc(var(--asdc-vh) - 96px);
+  background: var(--asdc-card);
+  border: 1px solid var(--asdc-border);
+  border-radius: var(--asdc-radius);
+  box-shadow: var(--asdc-shadow);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  z-index: 1001;
+  transition: opacity .18s ease, transform .18s ease;
+  opacity: 1;
+}
+
+/* Mobile: bottom sheet */
+@media (max-width: 640px){
+  .asdc-chat{
+    right: var(--chat-left);
+    left: var(--chat-left);
+    width: auto;
+    height: min(88vh, var(--asdc-vh));
+    bottom: 0;
+    border-radius: 24px 24px 0 0;
+    transform-origin: bottom right;
+  }
+  .asdc-chat-toggle{
+    right: var(--chat-right);
+    bottom: calc(var(--chat-bottom) + 8px);
+  }
+}
+
+/* Header */
+.asdc-chat-header{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4);
+  border-bottom: 1px solid var(--asdc-border);
+  background:#2671ff;
+}
+.asdc-chat-header-left{ display: flex; align-items: center; gap: var(--sp-3); }
+.asdc-chat-logo{ width: 60px; height: 57px; border-radius: 6px; }
+.asdc-chat-title{ margin:0; font-size: 29px; line-height: 1.2; font-weight: 600; color:white; }
+.asdc-chat-close{
+  border: none; background: transparent; font-size: 22px; line-height: 1; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 8px; color: #ebeff3;
+}
+.asdc-chat-close:hover{ background: rgba(127,127,127,.08); }
+.asdc-chat-close:focus-visible{ outline: 2px solid var(--asdc-primary); outline-offset: 2px; }
+
+/* Loading bar */
+.asdc-loading{
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 14px; color: var(--asdc-subtext);
+  border-bottom: 1px dashed var(--asdc-border);
+}
+
+/* Message list */
+.asdc-chat-box{
+  padding: var(--sp-4);
+  overflow: auto;
+  scroll-behavior: smooth;
+  background:
+    radial-gradient(1200px 200px at 100% 100%, rgba(37,99,235,.06), transparent 60%),
+    var(--asdc-card);
+}
+
+/* Nice scrollbars */
+.asdc-chat-box::-webkit-scrollbar{ width: 10px; }
+.asdc-chat-box::-webkit-scrollbar-thumb{
+  background: color-mix(in oklab, var(--asdc-border) 60%, #999);
+  border-radius: 6px;
+}
+.asdc-chat-box::-webkit-scrollbar-track{ background: transparent; }
+
+/* Composer */
+.asdc-chat-composer{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-top: 1px solid var(--asdc-border);
+  background: linear-gradient(180deg, var(--asdc-card), color-mix(in oklab, var(--asdc-card) 90%, #000));
+}
+.asdc-input{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--asdc-radius-sm);
+  border: 1px solid var(--asdc-border);
+  background: var(--asdc-card);
+  color: var(--asdc-text);
+  font-size: 14px;
+  outline: none;
+}
+.asdc-input::placeholder{ color: color-mix(in oklab, var(--asdc-subtext) 70%, transparent); }
+.asdc-input:focus{ border-color: color-mix(in oklab, var(--asdc-primary) 50%, var(--asdc-border)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--asdc-primary) 25%, transparent); }
+
+.asdc-send{
+  border: none; cursor: pointer; padding: 12px 16px;
+  border-radius: var(--asdc-radius-sm);
+  background: var(--asdc-primary); color: var(--asdc-primary-contrast);
+  font-weight: 600; font-size: 14px; min-width: 84px;
+  transition: transform .12s ease, background .18s ease, box-shadow .18s ease;
+}
+.asdc-send:hover{ transform: translateY(-1px); }
+.asdc-send:active{ transform: translateY(0); }
+.asdc-send:disabled{ opacity:.55; cursor:not-allowed; }
+
+/* Rows */
+.asdc-row{ display:flex; align-items:flex-end; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.asdc-row--me{ justify-content: flex-end; }
+.asdc-row--bot{ justify-content: flex-start; }
+
+/* Avatars (emoji blocks) */
+.asdc-icon{
+  width: 28px; height: 28px; border-radius: 50%;
+  display:grid; place-items:center; font-size: 16px;
+  background: color-mix(in oklab, var(--asdc-border) 60%, #fff);
+  color: var(--asdc-text);
+}
+
+/* Message bubbles */
+.asdc-bubble{
+  max-width: 78%;
+  border-radius: 16px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--asdc-border);
+  line-height: 1.45;
+  word-wrap:anywhere;
+  box-shadow: 0 3px 10px rgba(0,0,0,.06);
+}
+.asdc-bubble--me{
+  background: #c4f5da;
+  border-color: color-mix(in oklab, var(--asdc-me) 60%, var(--asdc-border));
+}
+.asdc-bubble--bot{
+  background: #e0f2fe;
+  border-color: color-mix(in oklab, var(--asdc-bot) 60%, var(--asdc-border));
+}
+.asdc-bubble--note{
+  margin: var(--sp-3) auto;
+  max-width: 90%;
+  background: #2b58eb;
+  border-color: color-mix(in oklab, var(--asdc-note) 60%, var(--asdc-border));
+}
+
+/* Content inside bubble */
+.asdc-bubble-content{ display:flex; flex-direction:column; gap: 6px; }
+.asdc-text{ font-size: 14px; color: var(--asdc-text);     font-family: Arial, Helvetica, sans-serif;}
+.asdc-link a{ color: var(--asdc-primary); text-decoration: underline; }
+.asdc-meta{ font-size: 15px; margin-left: 3px; color: var(--asdc-subtext); }
+
+/* Controls (copy / edit) */
+.asdc-controls{ display:flex; gap: 10px; align-items:center; margin-top: 2px; }
+.asdc-icon-btn{
+  border:none; background:transparent; cursor:pointer;
+  font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 6px; color: var(--asdc-subtext);
+}
+.asdc-icon-btn:hover{ background: rgba(127,127,127,.08); color: var(--asdc-text); }
+.asdc-icon-btn:focus-visible{ outline: 2px solid var(--asdc-primary); outline-offset: 2px; }
+
+/* Like / Dislike feedback row */
+.asdc-feedback{
+  display:flex; justify-content:flex-end; gap: 12px;
+  margin-top: 4px;
+}
+
+/* Inline edit */
+.asdc-edit-wrap{ display:flex; flex-direction:column; gap: var(--sp-3); }
+.asdc-edit-input{
+  width: 100%; padding: 10px 12px; font-size: 14px;
+  border: 1px solid var(--asdc-border); border-radius: var(--asdc-radius-sm);
+  background: var(--asdc-card); color: var(--asdc-text);
+}
+.asdc-edit-btns{ display:flex; gap: var(--sp-3); }
+.asdc-btn{
+  border: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-size: 14px; font-weight: 600;
+}
+.asdc-btn--gray{ background: #e5e7eb; color: #111827; }
+.asdc-btn--gray:hover{ background: #d1d5db; }
+.asdc-btn--blue{ background: var(--asdc-primary); color: var(--asdc-primary-contrast); }
+.asdc-btn--blue:hover{ filter: brightness(1.05); }
+
+/* --------------
+   Animations
+   -------------- */
+@media (prefers-reduced-motion: no-preference){
+  .asdc-chat{ transform: translateY(0); }
+  .asdc-chat[hidden]{ opacity:0; transform: translateY(8px); }
+}
+
+/* -------------
+   Accessibility
+   ------------- */
+.asdc-chat [role="button"], .asdc-chat button, .asdc-input, .asdc-icon-btn, .asdc-btn{
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* -----------------------------
+   Extra responsive refinements
+   ----------------------------- */
+@media (max-width: 380px){
+  :root{ --chat-w: 92vw; }
+  .asdc-bubble{ max-width: 86%; }
+  .asdc-chat-title{ font-size: 15px; }
+  .asdc-send{ min-width: 76px; padding: 10px 12px; }
+}
+
+@media (max-width: 320px){
+  .asdc-bubble{ max-width: 90%; padding: var(--sp-3); }
+  .asdc-chat-composer{ grid-template-columns: 1fr auto; }
+}
+
+/* -------------
+   Print safety
+   ------------- */
+@media print{
+  .asdc-chat, .asdc-chat-toggle{ display:none !important; }
+}
+/* Bubble (pop) animation */
+@keyframes bubble-pop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.15); }
+  60%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+/* Pulsing “breathing” animation */
+@keyframes bubble-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(124,92,255,0.6); }
+  70%  { box-shadow: 0 0 0 18px rgba(124,92,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(124,92,255,0); }
+}
+
+/* Apply effect to toggle button */
+
+
+/* Bubble pop on hover / click */
+/* .asdc-chat-toggle:hover {
+  animation: bubble-pop 0.4s ease;
+} */
+.asdc-chat-toggle:active {
+  transform: scale(0.95);
+}
+.asdc-chat-subtitle {
+  font-size: 10px;
+  font-weight: bold;   /* ✅ use this instead of font-family */
+  color:white;
+}
+/* Make bubbles a positioning context */
+.asdc-bubble {
+  position: relative;
+}
+
+/* Floating action bar for bot bubbles */
+.asdc-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+/* Show actions on hover/focus within the bubble */
+.asdc-bubble:hover .asdc-actions,
+.asdc-bubble:focus-within .asdc-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Button base */
+.asdc-action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+/* Gradient STOP style */
+.asdc-action-btn--stop {
+  background: linear-gradient(135deg, #ff4d4f, #ff6b6b);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(255, 77, 79, 0.35);
+}
+.asdc-action-btn--stop:hover { transform: translateY(-1px) scale(1.03); }
+.asdc-action-btn--stop:active { transform: translateY(0) scale(0.98); }
+
+/* Disabled (after stopping) */
+.asdc-action-btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+
+/* Nice tooltip using data-tooltip */
+.asdc-action-btn[data-tooltip] {
+  position: relative;
+}
+.asdc-action-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 50%;
+  transform: translateX(50%);
+  bottom: calc(100% + 8px);
+  white-space: nowrap;
+  font-size: 11px;
+  background: #111827;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.asdc-action-btn[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 3px);
+  right: 50%;
+  transform: translateX(50%);
+  border: 6px solid transparent;
+  border-top-color: #111827;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Show tooltip on hover/focus */
+.asdc-action-btn:hover::after,
+.asdc-action-btn:focus-visible::after,
+.asdc-action-btn:hover::before,
+.asdc-action-btn:focus-visible::before {
+  opacity: 1;
+  transform: translateX(50%) translateY(-2px);
+}
+
+/* Optional: a subtle pulsing dot while streaming */
+.asdc-actions.streaming::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16,185,129,0.5);
+  animation: asdc-pulse 1.4s infinite;
+}
+@keyframes asdc-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  70%  { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+  #asdcChatToggle {
+    position: fixed;  /* important: allows free placement */
+    bottom: 40px;     /* initial position */
+    right: 10px;      /* initial position */
+    cursor: grab;
+    z-index: 9999;
+    
+  }
+  .asdc-chat-icon {
+    width: 94px; height: 94px;
+    border-radius: 80px;
+    transition: transform 0.2s ease;
+  }
+  /* .asdc-chat {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  max-width: 90%;
+  height: 500px;
+  max-height: 80%;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  z-index: 9999;
+} */
+
+.asdc-chat.fullscreen {
+ width: 210mm;   /* standard A4 width */
+  height: 245mm;  /* standard A4 height */
+  max-width: 100%;  /* responsive safety */
+  max-height: 100%;
+  margin: auto;
+  background: white;  /* optional paper look */
+  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+  overflow: auto;
+}
+
+/* header buttons */
+.asdc-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #2563eb;
+  color: #fff;
+}
+
+.asdc-chat-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.asdc-chat-btn,
+.asdc-chat-close {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+.asdc-chat-toggle {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip-bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0b253a;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.4;
+  max-width: 240px;
+  text-align: center;
+  white-space: normal;
+  word-wrap: break-word;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 100;
+}
+
+/* Default above */
+.tooltip-bubble[data-position="top"] {
+  bottom: 120%;
+}
+.tooltip-bubble[data-position="top"]::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: #0b253a transparent transparent transparent;
+}
+
+/* Alternative: below */
+.tooltip-bubble[data-position="bottom"] {
+  top: 120%;
+}
+.tooltip-bubble[data-position="bottom"]::after {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent #0b253a transparent;
+}
+
+/* Hover effect */
+.asdc-chat-toggle:hover .tooltip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+/* ensure we can freely move it */
+.asdc-chat {
+  position: fixed;            /* stays over page; can move via left/top */
+  bottom: 35px;               /* initial position */
+  right: 122px;
+}
+
+/* when dragging, we switch to left/top; so clear bottom/right via JS */
+.asdc-chat-header {
+  cursor: move;               /* show drag cursor */
+  user-select: none;          /* avoid text selection while dragging */
+}
+
+/* don’t allow dragging in fullscreen */
+.asdc-chat.fullscreen .asdc-chat-header { cursor: default; }

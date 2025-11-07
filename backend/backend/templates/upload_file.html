@@ -1,0 +1,395 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>PDF Uploader</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- Tailwind (self-host or CDN) -->
+     <script src="{% static 'js/tailwind.js' %}"></script>
+
+<!-- HTMX (Offline) -->
+<script src="{% static 'js/htmx.min.js' %}"></script>
+
+    <style>
+        .dropzone {
+            @apply flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-8 text-gray-500 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition;
+        }
+    </style>
+    <style>
+  .dropzone {
+    display: flex;
+    
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #d1d5db;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .dropzone:hover {
+    border-color: #3b82f6;
+    color: #2563eb;
+  }
+</style>
+
+</head>
+
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <header class="bg-blue-700 text-white py-4 shadow">
+        <h1 class="text-center text-2xl font-semibold">📚 PDF Collection Manager</h1>
+    </header>
+
+    <main class="flex-1 container mx-auto px-4 py-8">
+        <!-- Upload Card -->
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <h2 class="text-lg font-medium mb-4">Upload new PDF(s)</h2>
+
+            <form id="pdf-upload-form" method="post" enctype="multipart/form-data" class="space-y-4"
+                onsubmit="handleUpload(event)">
+
+                {% csrf_token %}
+
+                <!-- Collection name -->
+                <label class="block">
+                    <span class="font-semibold">Collection name</span>
+                    <input name="collection_name" type="text" placeholder="e.g. Technical Manual, Policies…"
+                        class="mt-1 block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        required />
+                </label>
+
+                <!-- PDF file input -->
+                <label class="dropzone">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span class="text-sm">Drag & drop PDF files here or click to browse</span>
+                    <input id="file-input" multiple name="file" type="file" accept="application/pdf" class="hidden"
+                        required />
+                </label>
+
+                <!-- Buttons -->
+                <div class="flex items-center gap-3">
+                    <button type="submit"
+                        class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none">
+                        Upload
+                    </button>
+                    <button type="reset"
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-100">
+                        Clear
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Existing PDFs table -->
+        <div class="mt-10 bg-white shadow-md rounded-lg">
+            <div class="p-4 border-b">
+                <h2 class="text-lg font-medium">Existing uploads</h2>
+                 <input type="text" id="searchBox" placeholder="Search collection..." 
+           class="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm" />
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <!-- <th class="px-4 py-2 text-left font-semibold">File</th> -->
+                            <th class="px-4 py-2 text-left font-semibold">Collection</th>
+                            <th class="px-4 py-2 text-left font-semibold">Size (KB)</th>
+                            <th class="px-4 py-2 text-left font-semibold">Created</th>
+                                <th class="px-4 py-2 text-left font-semibold">Edit</th>
+
+                        </tr>
+                    </thead>
+                    <tbody id="pdf-table-body">
+                        <!-- JavaScript will populate this -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- Modal -->
+<div id="pdfModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black bg-opacity-50">
+  <div class="bg-white rounded-lg p-6 max-w-lg w-full shadow-xl">
+    <h3 id="modalTitle" class="text-lg font-semibold mb-4">Files in Collection</h3>
+<input type="text" id="chunkSearchInput" placeholder="Search chunks..." 
+       class="mb-4 w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+
+    <ul id="modalFileList" class="space-y-2 max-h-60 overflow-y-auto"></ul>
+    <div class="mt-4 text-right">
+      <button onclick="closeModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+    </div>
+  </div>
+</div>
+
+        </div>
+    </main>
+    <script>
+function closeModal() {
+  document.getElementById("pdfModal").classList.add("hidden");
+}
+
+function showFilesForCollection(collection) {
+  console.log("Opening modal for collection:", collection);
+
+  fetch(`/chatbot/get_chunks/?collection_name=${encodeURIComponent(collection)}`)
+    .then(res => res.json())
+    .then(response => {
+      const modal = document.getElementById("pdfModal");
+      const title = document.getElementById("modalTitle");
+      const list = document.getElementById("modalFileList");
+      const searchInput = document.getElementById("chunkSearchInput");
+
+      title.textContent = `Chunks in Collection: ${collection}`;
+      list.innerHTML = "";
+
+      const chunks = response.data || [];
+
+      function renderChunks(filter = "") {
+        list.innerHTML = "";
+        const filtered = chunks.filter(c =>
+          c.text.toLowerCase().includes(filter.toLowerCase())
+        );
+
+        if (filtered.length === 0) {
+          list.innerHTML = `<li class="text-gray-500">No matching chunks found.</li>`;
+          return;
+        }
+
+        filtered.forEach(chunk => {
+          const li = document.createElement("li");
+          li.className = "bg-gray-100 p-4 rounded shadow text-sm text-gray-700 whitespace-pre-wrap flex justify-between items-start gap-4";
+
+          const chunkText = document.createElement("div");
+          chunkText.className = "flex-1";
+          chunkText.textContent = chunk.text;
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.textContent = "Delete";
+          deleteBtn.className = "bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-xs";
+          deleteBtn.onclick = () => deleteChunk(chunk.id, collection);
+
+          li.appendChild(chunkText);
+          li.appendChild(deleteBtn);
+          list.appendChild(li);
+        });
+      }
+
+      // Initial render
+      renderChunks();
+
+      // Enable live search filtering
+      searchInput.value = ""; // clear previous
+      searchInput.addEventListener("input", () => {
+        const filter = searchInput.value;
+        renderChunks(filter);
+      });
+
+      modal.classList.remove("hidden");
+    })
+    .catch(err => {
+      alert("Error loading chunks.");
+      console.error(err);
+    });
+}
+function deleteFile(id, collection) {
+  if (!confirm("Are you sure you want to delete this PDF?")) return;
+
+  fetch(`/chatbot/delete-pdf/${id}/`, { method: "DELETE" })
+    .then(res => {
+      if (!res.ok) throw new Error("Delete failed");
+      alert("PDF deleted.");
+      showFilesForCollection(collection);
+      loadUploadedFiles();
+    })
+    .catch(err => {
+      console.error(err);
+      alert("Delete error");
+    });
+}
+function deleteChunk(id, collection) {
+  if (!confirm("Are you sure you want to delete this chunk?")) return;
+
+  fetch(`/chatbot/delete-chunk/${id}/`, {
+    method: "DELETE"
+  })
+    .then(res => {
+      if (!res.ok) throw new Error("Failed to delete chunk");
+      return res.text(); // safer when server might return empty body
+    })
+    .then(() => {
+      alert("✅ Chunk deleted successfully.");
+      showFilesForCollection(collection); // Reload the list
+    })
+    .catch(err => {
+      console.error("Error deleting chunk:", err);
+      alert("❌ " + err.message);
+    });
+}
+
+
+</script>
+
+
+    <!-- JavaScript for dynamic table population -->
+  <script>
+  function handleUpload(e) {
+    e.preventDefault();  // prevent default form submission
+
+    const formElement = e.target;
+    const fileInput = formElement.querySelector('input[name="file"]');
+    const collectionInput = formElement.querySelector('input[name="collection_name"]');
+
+    const file = fileInput.files[0];
+    const collection = collectionInput.value;
+
+    if (!file || !collection) {
+      alert("Please provide both collection name and file.");
+      return;
+    }
+    if (file.type !== "application/pdf") {
+    alert("❌ Only PDF files are allowed.");
+    return;
+  }
+
+    const uploadData = new FormData();
+    uploadData.append("file", file);
+    uploadData.append("collection_name", collection);
+
+    // Step 1: Upload file to /api/store-pdf/
+    fetch("/chatbot/store-pdf/", {
+      method: "POST",
+      body: uploadData
+    })
+    .then(async response => {
+      const data = await response.json();  // always parse JSON
+    if (!response.ok) throw new Error(data.error || "Upload failed");  // use error from backend
+    return data;
+    })
+    .then(storeData => {
+      console.log("PDF uploaded:", storeData.file_url);
+
+      // Refresh table
+      loadUploadedFiles();
+
+      // Step 2: Ingest using same file
+      const ingestData = new FormData();
+      ingestData.append("file", file);  // reuse file
+      ingestData.append("collection_name", collection);
+
+      return fetch("/chatbot/ingest-pdf/", {
+        method: "POST",
+        body: ingestData
+      });
+    })
+    .then(response => {
+      if (!response.ok) throw new Error("Ingestion failed");
+      return response.json();
+    })
+    .then(ingestData => {
+      console.log("Ingest success:", ingestData);
+      alert("✅ PDF processed and embedded successfully.");
+    })
+    .catch(error => {
+      console.error("Error:", error);
+      alert(`❌ ${error.message}`);
+    });
+  }
+
+ function loadUploadedFiles() {
+  fetch("/chatbot/store-pdf/")
+    .then(response => {
+      if (!response.ok) throw new Error("Failed to load uploads");
+      return response.json();
+    })
+    .then(data => {
+      const tbody = document.getElementById("pdf-table-body");
+      const searchBox = document.getElementById("searchBox");
+
+      function renderTable(filter = "") {
+        tbody.innerHTML = "";
+        const filtered = data.filter(item =>
+          item.collection_name.toLowerCase().includes(filter.toLowerCase())
+        );
+
+        filtered.forEach(item => {
+          const row = document.createElement("tr");
+          row.className = "bg-white";
+          row.onclick = () => showFilesForCollection(item.collection_name);
+
+          row.innerHTML = `
+            <td class="px-4 py-2">${item.collection_name}</td>
+            <td class="px-4 py-2">${item.size_kb}</td>
+            <td class="px-4 py-2">${item.created_at}</td>
+            <td class="px-4 py-2">
+              <button onclick="event.stopPropagation(); editPDF('${item.id}', '${item.filename}', '${item.collection_name}')" class="text-sm text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded">
+                Edit
+              </button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+
+      // Initial render
+      renderTable();
+
+      // Bind search event
+      searchBox.addEventListener("input", () => {
+        const filter = searchBox.value;
+        renderTable(filter);
+      });
+    })
+    .catch(error => {
+      console.error("Error fetching uploads:", error);
+    });
+}
+
+  // Initial load
+  document.addEventListener("DOMContentLoaded", loadUploadedFiles);
+</script>
+<script>
+  function editPDF(id, filename, collection) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf";
+
+    input.onchange = () => {
+      const file = input.files[0];
+      if (!file) return;
+
+      const ingest = new FormData();
+      ingest.append("file", file);
+      ingest.append("collection_name", collection);
+
+      fetch("/chatbot/ingest-pdf/", {
+        method: "POST",
+        body: ingest
+      })
+        .then(res => {
+          if (!res.ok) throw new Error("Ingest failed");
+          return res.json();
+        })
+        .then(() => {
+          alert("✅ PDF processed and ingested successfully.");
+          loadUploadedFiles();
+        })
+        .catch(err => {
+          console.error("Error ingesting PDF:", err);
+          alert("❌ " + err.message);
+        });
+    };
+
+    input.click(); // Trigger file picker
+  }
+</script>
+
+
+
+</body>
+</html>                                                                   
