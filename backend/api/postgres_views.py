@@ -19,10 +19,10 @@ import socket
 from django.http import JsonResponse
 from django.db import connection
 from rest_framework.decorators import api_view
-import bcrypt
 import psycopg2
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
 # PostgreSQL DB config
 DB_CONFIG = {
     "dbname": "chatbot",
@@ -786,53 +786,29 @@ class RawLoginNoSerializerAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --- Lookup user in Postgres with psycopg2 ---
+        # --- Lookup user via Django ORM ---
+        UserModel = get_user_model()
         try:
-            with psycopg2.connect(**DB_CONFIG) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT id, password_hash, is_active
-                        FROM app_users
-                        WHERE username = %s
-                        LIMIT 1
-                    """, (username,))
-                    row = cur.fetchone()
-        except Exception as e:
-            return Response({"detail": f"DB error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        if not row:
+            user = UserModel.objects.get(email__iexact=username)
+        except UserModel.DoesNotExist:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        user_id, password_hash, is_active = row
-
-        if not is_active:
+        if not user.is_active:
             return Response({"detail": "User is inactive."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        if not password_hash:
-            return Response({"detail": "Password not set."}, status=status.HTTP_401_UNAUTHORIZED)
-
-        # --- Verify bcrypt password ---
-        try:
-            valid = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
-        except ValueError:
-            return Response({"detail": "Stored password hash format is invalid."},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        if not valid:
+        if not user.check_password(password):
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         # --- Issue JWT via SimpleJWT ---
-        # Use a lightweight stub object so SimpleJWT can attach user_id claim correctly
-        UserStub = type("UserStub", (), {"id": user_id, "pk": user_id, "is_active": is_active, "username": username})
-        refresh = RefreshToken.for_user(UserStub())
+        refresh = RefreshToken.for_user(user)
         access = refresh.access_token
         # Optional custom claims:
-        access["username"] = username
+        access["username"] = user.email
 
         return Response({
             "access": str(access),
             "refresh": str(refresh),
-            "user": {"id": user_id, "username": username}
+            "user": {"id": user.id, "username": user.email}
         }, status=status.HTTP_200_OK)
     
 
