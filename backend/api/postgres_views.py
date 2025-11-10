@@ -19,10 +19,12 @@ import socket
 from django.http import JsonResponse
 from django.db import connection
 from rest_framework.decorators import api_view
-import bcrypt
 import psycopg2
+from psycopg2 import errors
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate, get_user_model
+import bcrypt
 # PostgreSQL DB config
 DB_CONFIG = {
     "dbname": "chatbot",
@@ -786,19 +788,55 @@ class RawLoginNoSerializerAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --- Lookup user in Postgres with psycopg2 ---
+        # --- Lookup user via Django authentication system first ---
+        UserModel = get_user_model()
+        user = authenticate(request=request, username=username, password=password)
+
+        if user is None:
+            # Fall back to a case-insensitive direct lookup in case custom backends are not configured
+            user = UserModel.objects.filter(email__iexact=username).first()
+            if user and not user.check_password(password):
+                user = None
+
+        if user is not None:
+            if not user.is_active:
+                return Response({"detail": "User is inactive."}, status=status.HTTP_401_UNAUTHORIZED)
+
+            refresh = RefreshToken.for_user(user)
+            access = refresh.access_token
+            access["username"] = getattr(user, UserModel.USERNAME_FIELD, user.email)
+
+            return Response({
+                "access": str(access),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.pk,
+                    "username": getattr(user, UserModel.USERNAME_FIELD, user.email),
+                },
+            }, status=status.HTTP_200_OK)
+
+        # --- Fallback: legacy app_users table for backward compatibility ---
+        row = None
         try:
             with psycopg2.connect(**DB_CONFIG) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT id, password_hash, is_active
-                        FROM app_users
-                        WHERE username = %s
-                        LIMIT 1
-                    """, (username,))
+                    cur.execute(
+                        """
+                            SELECT id, password_hash, is_active
+                            FROM app_users
+                            WHERE username = %s
+                            LIMIT 1
+                        """,
+                        (username,),
+                    )
                     row = cur.fetchone()
-        except Exception as e:
-            return Response({"detail": f"DB error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except errors.UndefinedTable:
+            row = None
+        except Exception as exc:
+            return Response(
+                {"detail": f"DB error: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if not row:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -811,32 +849,43 @@ class RawLoginNoSerializerAPIView(APIView):
         if not password_hash:
             return Response({"detail": "Password not set."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # --- Verify bcrypt password ---
         try:
             valid = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
         except ValueError:
-            return Response({"detail": "Stored password hash format is invalid."},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"detail": "Stored password hash format is invalid."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if not valid:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # --- Issue JWT via SimpleJWT ---
-        # Use a lightweight stub object so SimpleJWT can attach user_id claim correctly
-        UserStub = type("UserStub", (), {"id": user_id, "pk": user_id, "is_active": is_active, "username": username})
+        # Issue JWT for legacy users as well
+        UserStub = type(
+            "UserStub",
+            (),
+            {
+                "id": user_id,
+                "pk": user_id,
+                "is_active": is_active,
+                UserModel.USERNAME_FIELD: username,
+            },
+        )
         refresh = RefreshToken.for_user(UserStub())
         access = refresh.access_token
-        # Optional custom claims:
         access["username"] = username
 
-        return Response({
-            "access": str(access),
-            "refresh": str(refresh),
-            "user": {"id": user_id, "username": username}
-        }, status=status.HTTP_200_OK)
-    
+        return Response(
+            {
+                "access": str(access),
+                "refresh": str(refresh),
+                "user": {"id": user_id, "username": username},
+            },
+            status=status.HTTP_200_OK,
+        )
 
-api_view(["GET"])
+
+@api_view(["GET"])
 def get_collection_feedback_counts(request):
     try:
         with connection.cursor() as cursor:
